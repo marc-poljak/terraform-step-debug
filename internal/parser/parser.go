@@ -26,9 +26,17 @@ func NewTerraformPlanParser(terraformPath string) *TerraformPlanParser {
 }
 
 // GeneratePlan generates a new Terraform plan file
-func (p *TerraformPlanParser) GeneratePlan(terraformDir, outFile string) error {
-	// For Terraform 1.11.x, we need to use the -out flag without the = sign
-	cmd := exec.Command(p.terraformPath, "plan", "-out", outFile)
+func (p *TerraformPlanParser) GeneratePlan(terraformDir, outFile, varFile string) error {
+	// Build the command
+	args := []string{"plan", "-out", outFile}
+
+	// Add var-file if specified
+	if varFile != "" {
+		args = append(args, "-var-file", varFile)
+	}
+
+	// For Terraform 1.11.x, we use proper argument separation
+	cmd := exec.Command(p.terraformPath, args...)
 	cmd.Dir = terraformDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

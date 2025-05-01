@@ -20,16 +20,17 @@ terraform {
 resource "random_pet" "server" {
   length    = 2
   separator = "-"
+  prefix    = var.app_name_prefix
 }
 
 # Create random passwords with different lengths
 resource "random_password" "db_password" {
-  length  = 16
+  length  = var.password_length
   special = true
 }
 
 resource "random_password" "api_key" {
-  length  = 24
+  length  = var.password_length + 8
   special = true
 }
 
@@ -45,8 +46,8 @@ resource "random_integer" "priority" {
 }
 
 resource "random_integer" "port" {
-  min = 8000
-  max = 9000
+  min = var.min_port
+  max = var.max_port
 }
 
 # Create a local file with our "configuration"
@@ -59,6 +60,8 @@ resource "local_file" "config" {
     api_token   = random_uuid.api_token.result
     priority    = random_integer.priority.result
     port        = random_integer.port.result
+    environment = var.environment
+    tags        = var.resource_tags
   })
   filename        = "${path.module}/output/app-config.json"
   file_permission = "0600"
@@ -72,6 +75,8 @@ resource "local_file" "infrastructure" {
     app_name    = random_pet.server.id
     bucket_name = "data-${random_uuid.bucket_suffix.result}"
     port        = random_integer.port.result
+    environment = var.environment
+    tags        = var.resource_tags
   })
   filename        = "${path.module}/output/infrastructure.txt"
   file_permission = "0600"
@@ -85,6 +90,7 @@ resource "local_file" "secrets" {
     db_password = random_password.db_password.result
     api_key     = random_password.api_key.result
     api_token   = random_uuid.api_token.result
+    environment = var.environment
   })
   filename        = "${path.module}/output/secrets.txt"
   file_permission = "0600"
@@ -103,17 +109,55 @@ resource "local_file" "output_directory" {
   }
 }
 
-# This resource intentionally waits before creating to simulate a longer-running resource
-resource "time_sleep" "wait_30_seconds" {
-  depends_on = [random_pet.server]
+# Create a file with environment info
+resource "local_file" "environment_info" {
+  content = templatefile("${path.module}/templates/environment.tpl", {
+    environment = var.environment
+    app_name    = random_pet.server.id
+    tags        = var.resource_tags
+    timestamp   = timestamp()
+  })
+  filename        = "${path.module}/output/environment-${var.environment}.txt"
+  file_permission = "0600"
 
-  create_duration = "30s"
+  depends_on = [local_file.output_directory]
 }
 
-resource "local_file" "delayed_report" {
-  depends_on = [time_sleep.wait_30_seconds]
+# This resource intentionally waits before creating to simulate a longer-running resource
+# Only created if enable_delay is true
+resource "time_sleep" "wait_for_delay" {
+  count      = var.enable_delay ? 1 : 0
+  depends_on = [random_pet.server]
 
-  content         = "This file was created after a 30-second delay to simulate a longer-running resource. Timestamp: ${timestamp()}"
+  create_duration = "${var.delay_seconds}s"
+}
+
+# Delayed report for when delay is enabled
+resource "local_file" "delayed_report_with_delay" {
+  count      = var.enable_delay ? 1 : 0
+  depends_on = [time_sleep.wait_for_delay]
+
+  content = templatefile("${path.module}/templates/delayed.tpl", {
+    environment = var.environment
+    timestamp   = timestamp()
+    delay       = var.delay_seconds
+    app_name    = random_pet.server.id
+  })
+  filename        = "${path.module}/output/delayed-report.txt"
+  file_permission = "0600"
+}
+
+# Immediate report for when delay is disabled
+resource "local_file" "delayed_report_no_delay" {
+  count      = var.enable_delay ? 0 : 1
+  depends_on = [local_file.output_directory]
+
+  content = templatefile("${path.module}/templates/delayed.tpl", {
+    environment = var.environment
+    timestamp   = timestamp()
+    delay       = 0
+    app_name    = random_pet.server.id
+  })
   filename        = "${path.module}/output/delayed-report.txt"
   file_permission = "0600"
 }
@@ -121,6 +165,10 @@ resource "local_file" "delayed_report" {
 # Outputs
 output "app_name" {
   value = random_pet.server.id
+}
+
+output "environment" {
+  value = var.environment
 }
 
 output "bucket_name" {
@@ -131,11 +179,20 @@ output "api_port" {
   value = random_integer.port.result
 }
 
+output "delay_enabled" {
+  value = var.enable_delay
+}
+
 output "files_created" {
   value = [
     local_file.config.filename,
     local_file.infrastructure.filename,
     local_file.secrets.filename,
-    local_file.delayed_report.filename
+    local_file.environment_info.filename,
+    var.enable_delay ? local_file.delayed_report_with_delay[0].filename : local_file.delayed_report_no_delay[0].filename
   ]
+}
+
+output "resource_tags" {
+  value = var.resource_tags
 }

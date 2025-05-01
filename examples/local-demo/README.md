@@ -9,6 +9,7 @@ This is a demo Terraform configuration for testing the `terraform-step-debug` to
 3. Time-based resources to simulate longer-running operations
 4. Various dependencies between resources
 5. Output values with resource information
+6. Variable files to demonstrate different configurations
 
 ## Resource Dependency Graph
 
@@ -25,9 +26,9 @@ random_integer.priority, random_integer.port (independent)
 ↓
 local_file.output_directory (creates output directory)
 ↓
-local_file.config, local_file.infrastructure, local_file.secrets (file outputs)
+local_file.config, local_file.infrastructure, local_file.secrets, local_file.environment_info (file outputs)
 ↓
-time_sleep.wait_30_seconds (waits 30 seconds)
+time_sleep.wait_for_delay (configurable, may be skipped)
 ↓
 local_file.delayed_report (created after delay)
 ```
@@ -39,17 +40,48 @@ local_file.delayed_report (created after delay)
    terraform init
    ```
 
-2. Run your terraform-step-debug tool:
+2. Run your terraform-step-debug tool with default variables:
    ```
    terraform-step-debug
    ```
 
-3. Follow the prompts to apply each resource step by step.
+3. Or run with a specific variable file:
+   ```
+   terraform-step-debug --var-file=demo.tfvars
+   ```
+   
+   ```
+   terraform-step-debug --var-file=prod.tfvars
+   ```
 
-4. To clean up when you're done:
+4. Follow the prompts to apply each resource step by step.
+
+5. To clean up when you're done:
    ```
    terraform destroy
    ```
+
+## Variable Files
+
+This demo includes multiple variable files to demonstrate how terraform-step-debug handles different configurations:
+
+- **Default**: Uses the default values in variables.tf
+  - app_name_prefix: "app"
+  - environment: "dev"
+  - 30-second delay enabled
+
+- **demo.tfvars**: Staging environment settings
+  - app_name_prefix: "demo"
+  - environment: "staging"
+  - 10-second delay enabled
+  - Custom tags
+
+- **prod.tfvars**: Production environment settings
+  - app_name_prefix: "prod"
+  - environment: "production"
+  - Delay disabled
+  - Higher security settings (longer passwords)
+  - Additional tags
 
 ## Expected Outputs
 
@@ -58,10 +90,12 @@ After applying this configuration, you'll find the following files in the `outpu
 - `app-config.json`: A simulated application configuration in JSON format
 - `infrastructure.txt`: A simulated infrastructure report  
 - `secrets.txt`: A simulated secrets file
-- `delayed-report.txt`: A file that is created after a 30-second delay
+- `environment-[env].txt`: Information about the environment used
+- `delayed-report.txt`: A file that is created after a delay (if enabled)
 
 ## Notes
 
-- The `time_sleep` resource introduces a 30-second delay to help demonstrate the step-by-step debugging capability of your tool.
+- The `time_sleep` resource introduces a configurable delay to help demonstrate the step-by-step debugging capability of your tool.
 - All files are created locally in the `output` directory.
 - No connections to external services or cloud providers are required.
+- Try running with different var-files to see how the tool handles different configurations.

@@ -21,6 +21,7 @@ var (
 	dryRun        = flag.Bool("dry-run", false, "Perform a dry run without actually applying changes")
 	targetAddr    = flag.String("target", "", "Target a specific resource (default: all resources)")
 	version       = flag.Bool("version", false, "Print version information and exit")
+	varFile       = flag.String("var-file", "", "Path to the Terraform variable file (e.g., prod.tfvars)")
 )
 
 // Version information, to be set during build
@@ -86,7 +87,7 @@ func main() {
 		cleanup = true
 
 		fmt.Printf("Generating Terraform plan to %s...\n", *planFile)
-		if err := planParser.GeneratePlan(*terraformDir, *planFile); err != nil {
+		if err := planParser.GeneratePlan(*terraformDir, *planFile, *varFile); err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating plan: %s\n", err)
 			os.Exit(1)
 		}
@@ -127,7 +128,7 @@ func main() {
 	executionGraph := planParser.BuildExecutionGraph(plan)
 
 	// Create an executor
-	executer := executor.NewTerraformExecutor(*terraformPath, *terraformDir, *planFile, *dryRun)
+	executer := executor.NewTerraformExecutor(*terraformPath, *terraformDir, *planFile, *varFile, *dryRun)
 
 	// Display the plan summary
 	ui.DisplayPlanSummary(plan)

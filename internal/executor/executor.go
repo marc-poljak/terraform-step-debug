@@ -15,11 +15,12 @@ type TerraformExecutor struct {
 	terraformPath string
 	terraformDir  string
 	planFile      string
+	varFile       string
 	dryRun        bool
 }
 
 // NewTerraformExecutor creates a new TerraformExecutor
-func NewTerraformExecutor(terraformPath, terraformDir, planFile string, dryRun bool) *TerraformExecutor {
+func NewTerraformExecutor(terraformPath, terraformDir, planFile, varFile string, dryRun bool) *TerraformExecutor {
 	if terraformPath == "" {
 		terraformPath = "terraform" // Default to using terraform from PATH
 	}
@@ -28,6 +29,7 @@ func NewTerraformExecutor(terraformPath, terraformDir, planFile string, dryRun b
 		terraformPath: terraformPath,
 		terraformDir:  terraformDir,
 		planFile:      planFile,
+		varFile:       varFile,
 		dryRun:        dryRun,
 	}
 }
@@ -44,13 +46,19 @@ func (e *TerraformExecutor) ApplyResource(resource *model.Resource) error {
 
 	// Build the command to apply the specific resource
 	// For Terraform 1.11.x, we use -target as separate arguments
-	cmd := exec.Command(
-		e.terraformPath,
+	args := []string{
 		"apply",
 		"-auto-approve",
 		"-target",
 		resource.Address,
-	)
+	}
+
+	// Add var-file if specified
+	if e.varFile != "" {
+		args = append(args, "-var-file", e.varFile)
+	}
+
+	cmd := exec.Command(e.terraformPath, args...)
 
 	cmd.Dir = e.terraformDir
 	cmd.Stdout = os.Stdout
@@ -127,6 +135,11 @@ func (e *TerraformExecutor) GetResourceDiff(resource *model.Resource) (string, e
 		"plan",
 		"-target",
 		resource.Address,
+	}
+
+	// Add var-file if specified
+	if e.varFile != "" {
+		args = append(args, "-var-file", e.varFile)
 	}
 
 	cmd := exec.Command(e.terraformPath, args...)
