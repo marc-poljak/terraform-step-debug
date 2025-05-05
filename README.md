@@ -1,18 +1,18 @@
-# Terraform Step Debugger
+# 🔍 Terraform Step Debugger
 
 A CLI tool that intercepts Terraform apply operations and executes them step-by-step with user approval for each resource operation, similar to a code debugger.
 
-## Features
+## ✨ Features
 
-- Generate a Terraform plan
-- Parse the plan to identify individual resource operations
-- Present each operation to the user for review/approval
-- Execute operations one-by-one using targeted apply
-- Allow stepping, skipping, or aborting the process
-- Dependency-aware execution order
-- Support for variable files (tfvars)
+- 📋 Generate a Terraform plan
+- 🔎 Parse the plan to identify individual resource operations
+- 👁️ Present each operation to the user for review/approval
+- 🚀 Execute operations one-by-one using targeted apply
+- 🛑 Allow stepping, skipping, or aborting the process
+- 🧩 Dependency-aware execution order
+- 🔄 Support for variable files (tfvars)
 
-## Installation
+## 📥 Installation
 
 ### From Source
 
@@ -31,7 +31,7 @@ make install
 go install github.com/marc-poljak/terraform-step-debug/cmd/terraform-step-debug@latest
 ```
 
-## Usage
+## 🚀 Usage
 
 ```bash
 # Basic usage (in a Terraform directory)
@@ -53,7 +53,7 @@ terraform-step-debug --dry-run
 terraform-step-debug --target aws_instance.example
 ```
 
-### Environment-Specific Deployments
+### 🌐 Environment-Specific Deployments
 
 For different environments, you can use variable files:
 
@@ -70,7 +70,7 @@ terraform-step-debug --var-file prod.tfvars
 
 This ensures that all operations use the correct variable values for each environment, maintaining consistency between planning and execution.
 
-### Commands During Execution
+### ⌨️ Commands During Execution
 
 During the step-by-step execution, you can use the following commands:
 
@@ -79,7 +79,7 @@ During the step-by-step execution, you can use the following commands:
 - `d` or `detail` - Show detailed information about the current resource
 - `x` or `abort` - Abort the execution
 
-## Example
+## 🧪 Example
 
 The repository includes a local demo in `examples/local-demo` that you can use to try the tool without requiring any cloud provider access:
 
@@ -91,12 +91,12 @@ terraform-step-debug --var-file prod.tfvars
 
 The demo includes different variable files for development, staging, and production environments, showing how the tool can be used with environment-specific configurations.
 
-## Requirements
+## 📋 Requirements
 
 - Go 1.21 or higher
 - Terraform 0.12 or higher
 
-## Development
+## 🛠️ Development
 
 ```bash
 # Clone the repository
@@ -116,7 +116,7 @@ make build
 make run
 ```
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 terraform-step-debug/
@@ -138,10 +138,10 @@ terraform-step-debug/
 └── README.md
 ```
 
-## Contributing
+## 👥 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## License
+## 📜 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
