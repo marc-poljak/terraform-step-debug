@@ -133,7 +133,7 @@ resource "time_sleep" "wait_for_delay" {
 
 # Delayed report for when delay is enabled
 resource "local_file" "delayed_report_with_delay" {
-  count = var.enable_delay ? 1 : 0
+  count      = var.enable_delay ? 1 : 0
   depends_on = [time_sleep.wait_for_delay]
 
   content = templatefile("${path.module}/templates/delayed.tpl", {
@@ -147,7 +147,7 @@ resource "local_file" "delayed_report_with_delay" {
 
 # Immediate report for when delay is disabled
 resource "local_file" "delayed_report_no_delay" {
-  count = var.enable_delay ? 0 : 1
+  count      = var.enable_delay ? 0 : 1
   depends_on = [local_file.output_directory]
 
   content = templatefile("${path.module}/templates/delayed.tpl", {

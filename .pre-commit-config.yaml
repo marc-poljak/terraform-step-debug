@@ -1,0 +1,16 @@
+repos:
+  # Go formatting hooks
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt    
+
+  # Terraform hooks
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.86.0  # Use the latest version
+    hooks:
+      - id: terraform_fmt
+        files: ^examples/local-demo/
+      # Specify the subdirectory for terraform_validate
+      - id: terraform_validate
+        files: ^examples/local-demo/
