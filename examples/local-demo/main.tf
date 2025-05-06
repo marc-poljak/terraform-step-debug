@@ -115,7 +115,6 @@ resource "local_file" "environment_info" {
     environment = var.environment
     app_name    = random_pet.server.id
     tags        = var.resource_tags
-    timestamp   = timestamp()
   })
   filename        = "${path.module}/output/environment-${var.environment}.txt"
   file_permission = "0600"
@@ -134,12 +133,11 @@ resource "time_sleep" "wait_for_delay" {
 
 # Delayed report for when delay is enabled
 resource "local_file" "delayed_report_with_delay" {
-  count      = var.enable_delay ? 1 : 0
+  count = var.enable_delay ? 1 : 0
   depends_on = [time_sleep.wait_for_delay]
 
   content = templatefile("${path.module}/templates/delayed.tpl", {
     environment = var.environment
-    timestamp   = timestamp()
     delay       = var.delay_seconds
     app_name    = random_pet.server.id
   })
@@ -149,12 +147,11 @@ resource "local_file" "delayed_report_with_delay" {
 
 # Immediate report for when delay is disabled
 resource "local_file" "delayed_report_no_delay" {
-  count      = var.enable_delay ? 0 : 1
+  count = var.enable_delay ? 0 : 1
   depends_on = [local_file.output_directory]
 
   content = templatefile("${path.module}/templates/delayed.tpl", {
     environment = var.environment
-    timestamp   = timestamp()
     delay       = 0
     app_name    = random_pet.server.id
   })

@@ -16,4 +16,4 @@ For instance:
   terraform-step-debug --var-file=demo.tfvars
   terraform-step-debug --var-file=prod.tfvars
 
-Timestamp: ${timestamp()}
+<!-- Removed dynamic timestamp to prevent constant changes -->

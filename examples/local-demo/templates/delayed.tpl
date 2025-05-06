@@ -10,7 +10,7 @@ the variables:
 When using different var-files, this resource might be skipped
 entirely if enable_delay is set to false.
 
-Timestamp: ${timestamp}
+<!-- Removed dynamic timestamp to prevent constant changes -->
 
 Note: In a real environment, longer running resources might
 include database instances, clusters, or large storage systems.
