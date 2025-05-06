@@ -1,17 +1,17 @@
-# Terraform Local Demo
+# 🧪 Terraform Local Demo
 
 This is a demo Terraform configuration for testing the `terraform-step-debug` tool locally without requiring any cloud provider access. It uses local resources and random generators to create a realistic dependency graph of resources.
 
-## What's Included
+## ✨ What's Included
 
-1. Random resources (pet names, UUIDs, passwords, integers)
-2. Local file resources with templated content
-3. Time-based resources to simulate longer-running operations
-4. Various dependencies between resources
-5. Output values with resource information
-6. Variable files to demonstrate different configurations
+1. 🎲 Random resources (pet names, UUIDs, passwords, integers)
+2. 📄 Local file resources with templated content
+3. ⏱️ Time-based resources to simulate longer-running operations
+4. 🔄 Various dependencies between resources
+5. 📊 Output values with resource information
+6. 🔧 Variable files to demonstrate different configurations
 
-## Resource Dependency Graph
+## 📊 Resource Dependency Graph
 
 This configuration creates the following dependency structure:
 
@@ -30,10 +30,10 @@ local_file.config, local_file.infrastructure, local_file.secrets, local_file.env
 ↓
 time_sleep.wait_for_delay (configurable, may be skipped)
 ↓
-local_file.delayed_report (created after delay)
+local_file.delayed_report_with_delay or local_file.delayed_report_no_delay (depending on enable_delay)
 ```
 
-## Usage
+## 🚀 Usage
 
 1. Initialize the Terraform configuration:
    ```
@@ -61,29 +61,38 @@ local_file.delayed_report (created after delay)
    terraform destroy
    ```
 
-## Variable Files
+## 🌐 Variable Files
 
 This demo includes multiple variable files to demonstrate how terraform-step-debug handles different configurations:
 
-- **Default**: Uses the default values in variables.tf
+- **🔧 Default**: Uses the default values in variables.tf
   - app_name_prefix: "app"
   - environment: "dev"
   - 30-second delay enabled
 
-- **demo.tfvars**: Staging environment settings
+- **🚧 demo.tfvars**: Staging environment settings
   - app_name_prefix: "demo"
   - environment: "staging"
   - 10-second delay enabled
   - Custom tags
 
-- **prod.tfvars**: Production environment settings
+- **🏭 prod.tfvars**: Production environment settings
   - app_name_prefix: "prod"
   - environment: "production"
   - Delay disabled
   - Higher security settings (longer passwords)
   - Additional tags
 
-## Expected Outputs
+## 🔄 Idempotent Configuration
+
+This demo is designed to be idempotent, meaning that after the initial apply, subsequent runs of `terraform apply` or `terraform-step-debug` will show "No changes. Your infrastructure matches the configuration." This is achieved by:
+
+1. Avoiding dynamic content like timestamps in file resources
+2. Using deterministic resource names and values
+
+This behavior demonstrates a best practice in Terraform configurations and makes the demo more predictable and stable while testing the step debugger.
+
+## 📂 Expected Outputs
 
 After applying this configuration, you'll find the following files in the `output` directory:
 
@@ -93,7 +102,7 @@ After applying this configuration, you'll find the following files in the `outpu
 - `environment-[env].txt`: Information about the environment used
 - `delayed-report.txt`: A file that is created after a delay (if enabled)
 
-## Notes
+## 📝 Notes
 
 - The `time_sleep` resource introduces a configurable delay to help demonstrate the step-by-step debugging capability of your tool.
 - All files are created locally in the `output` directory.
