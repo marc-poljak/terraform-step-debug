@@ -58,11 +58,25 @@ run: build
 	$(BUILD_DIR)/$(BINARY_NAME)
 
 # Package for distribution
+# Package for distribution
 dist: ensure-build-dir
 	mkdir -p $(BUILD_DIR)/dist
+	# Build for macOS (Intel)
 	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/dist/$(BINARY_NAME)_darwin_amd64 ./cmd/terraform-step-debug
+	# Build for macOS (Apple Silicon)
 	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/dist/$(BINARY_NAME)_darwin_arm64 ./cmd/terraform-step-debug
+	# Build for Linux (x86_64)
 	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/dist/$(BINARY_NAME)_linux_amd64 ./cmd/terraform-step-debug
+	# Build for Linux (ARM64)
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/dist/$(BINARY_NAME)_linux_arm64 ./cmd/terraform-step-debug
+	# Build for Linux (RISC-V 64-bit)
+	GOOS=linux GOARCH=riscv64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/dist/$(BINARY_NAME)_linux_riscv64 ./cmd/terraform-step-debug
+	# Build for Windows
+	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/dist/$(BINARY_NAME)_windows_amd64.exe ./cmd/terraform-step-debug
+	# Compress the binaries (macOS/Linux)
+	cd $(BUILD_DIR)/dist && gzip -9 $(BINARY_NAME)_darwin_amd64 $(BINARY_NAME)_darwin_arm64 $(BINARY_NAME)_linux_amd64 $(BINARY_NAME)_linux_arm64 $(BINARY_NAME)_linux_riscv64
+	# Compress the Windows binary
+	cd $(BUILD_DIR)/dist && zip -9 $(BINARY_NAME)_windows_amd64.zip $(BINARY_NAME)_windows_amd64.exe && rm $(BINARY_NAME)_windows_amd64.exe
 
 # Help target
 help:
