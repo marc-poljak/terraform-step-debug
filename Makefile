@@ -73,10 +73,21 @@ dist: ensure-build-dir
 	GOOS=linux GOARCH=riscv64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/dist/$(BINARY_NAME)_linux_riscv64 ./cmd/terraform-step-debug
 	# Build for Windows
 	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/dist/$(BINARY_NAME)_windows_amd64.exe ./cmd/terraform-step-debug
-	# Compress the binaries (macOS/Linux)
-	cd $(BUILD_DIR)/dist && gzip -9 $(BINARY_NAME)_darwin_amd64 $(BINARY_NAME)_darwin_arm64 $(BINARY_NAME)_linux_amd64 $(BINARY_NAME)_linux_arm64 $(BINARY_NAME)_linux_riscv64
+	
+	# Copy and compress binaries for macOS/Linux (to avoid hard link issues)
+	cd $(BUILD_DIR)/dist && \
+	for file in $(BINARY_NAME)_darwin_amd64 $(BINARY_NAME)_darwin_arm64 $(BINARY_NAME)_linux_amd64 $(BINARY_NAME)_linux_arm64 $(BINARY_NAME)_linux_riscv64; do \
+		cp -f $$file $$file.copy && \
+		mv $$file.copy $$file && \
+		gzip -9 $$file; \
+	done
+	
 	# Compress the Windows binary
-	cd $(BUILD_DIR)/dist && zip -9 $(BINARY_NAME)_windows_amd64.zip $(BINARY_NAME)_windows_amd64.exe && rm $(BINARY_NAME)_windows_amd64.exe
+	cd $(BUILD_DIR)/dist && \
+	cp -f $(BINARY_NAME)_windows_amd64.exe $(BINARY_NAME)_windows_amd64.exe.copy && \
+	mv $(BINARY_NAME)_windows_amd64.exe.copy $(BINARY_NAME)_windows_amd64.exe && \
+	zip -9 $(BINARY_NAME)_windows_amd64.zip $(BINARY_NAME)_windows_amd64.exe && \
+	rm $(BINARY_NAME)_windows_amd64.exe
 
 # Help target
 help:
