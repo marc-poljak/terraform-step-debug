@@ -1,5 +1,9 @@
 # 🔍 Terraform Step Debugger
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/marc-poljak/terraform-step-debug)](https://goreportcard.com/report/github.com/marc-poljak/terraform-step-debug)
+[![License](https://img.shields.io/github/license/marc-poljak/terraform-step-debug)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/marc-poljak/terraform-step-debug)](go.mod)
+
 A CLI tool that intercepts Terraform apply operations and executes them step-by-step with user approval for each resource operation, similar to a code debugger.
 
 ## ✨ Features
