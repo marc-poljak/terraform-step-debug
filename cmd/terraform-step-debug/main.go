@@ -35,65 +35,25 @@ func main() {
 	// Parse command line flags
 	flag.Parse()
 
-	// Print version information if requested
-	if *version {
-		fmt.Printf("terraform-step-debug version %s\n", Version)
-		fmt.Printf("Build time: %s\n", BuildTime)
-		fmt.Printf("Commit: %s\n", Commit)
-		os.Exit(0)
+	// Print version if requested
+	if handleVersionFlag() {
+		return
 	}
 
-	// Find Terraform binary if not specified
-	if *terraformPath == "" {
-		var err error
-		*terraformPath, err = util.FindTerraformBinary()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(1)
-		}
+	// Setup environment
+	if err := setupEnvironment(); err != nil {
+		exitWithError(err)
 	}
 
-	// Check Terraform version
-	if err := util.CheckTerraformVersion(*terraformPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
-	}
-
-	// Find Terraform directory if not specified
-	if *terraformDir == "" {
-		var err error
-		*terraformDir, err = util.FindTerraformDir("")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(1)
-		}
-	}
-
-	// Create a new UI
+	// Setup UI and parser
 	ui := ui.NewUI()
-
-	// Create a new parser
 	planParser := parser.NewTerraformPlanParser(*terraformPath)
 
-	// If no plan file is specified, generate one
-	cleanup := false
-	if *planFile == "" {
-		var err error
-		*planFile, err = util.CreateTempPlanFile()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(1)
-		}
-		cleanup = true
-
-		fmt.Printf("Generating Terraform plan to %s...\n", *planFile)
-		if err := planParser.GeneratePlan(*terraformDir, *planFile, *varFile); err != nil {
-			fmt.Fprintf(os.Stderr, "Error generating plan: %s\n", err)
-			os.Exit(1)
-		}
+	// Handle plan file
+	cleanup, err := handlePlanFile(planParser)
+	if err != nil {
+		exitWithError(err)
 	}
-
-	// Clean up the plan file when we're done if we generated it
 	if cleanup {
 		defer util.CleanupFiles(*planFile)
 	}
@@ -101,14 +61,98 @@ func main() {
 	// Parse the plan
 	plan, err := planParser.ParsePlan(*planFile, *terraformDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing plan: %s\n", err)
-		os.Exit(1)
+		exitWithError(fmt.Errorf("error parsing plan: %w", err))
 	}
 
+	// Check if there are changes and handle target resource
+	if !handlePlanChanges(plan) {
+		return
+	}
+
+	// Build execution graph and run the executor
+	executionGraph := planParser.BuildExecutionGraph(plan)
+	executer := executor.NewTerraformExecutor(*terraformPath, *terraformDir, *planFile, *varFile, *dryRun)
+
+	// Display the plan summary
+	ui.DisplayPlanSummary(plan)
+
+	// Execute the plan
+	executedResources := executeResources(ui, executer, executionGraph, plan, *targetAddr)
+
+	// Display summary and exit
+	ui.DisplaySummary(executedResources)
+	fmt.Println("Execution complete.")
+}
+
+// handleVersionFlag handles the version flag and returns true if the program should exit
+func handleVersionFlag() bool {
+	if *version {
+		fmt.Printf("terraform-step-debug version %s\n", Version)
+		fmt.Printf("Build time: %s\n", BuildTime)
+		fmt.Printf("Commit: %s\n", Commit)
+		os.Exit(0)
+		return true
+	}
+	return false
+}
+
+// setupEnvironment sets up the terraform path and directory
+func setupEnvironment() error {
+	var err error
+
+	// Find Terraform binary if not specified
+	if *terraformPath == "" {
+		*terraformPath, err = util.FindTerraformBinary()
+		if err != nil {
+			return err
+		}
+	}
+
+	// Check Terraform version
+	if err := util.CheckTerraformVersion(*terraformPath); err != nil {
+		return err
+	}
+
+	// Find Terraform directory if not specified
+	if *terraformDir == "" {
+		*terraformDir, err = util.FindTerraformDir("")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// handlePlanFile generates a plan file if needed and returns whether cleanup is needed
+func handlePlanFile(planParser *parser.TerraformPlanParser) (bool, error) {
+	cleanup := false
+
+	// If no plan file is specified, generate one
+	if *planFile == "" {
+		var err error
+		*planFile, err = util.CreateTempPlanFile()
+		if err != nil {
+			return false, err
+		}
+		cleanup = true
+
+		fmt.Printf("Generating Terraform plan to %s...\n", *planFile)
+		if err := planParser.GeneratePlan(*terraformDir, *planFile, *varFile); err != nil {
+			return cleanup, fmt.Errorf("error generating plan: %w", err)
+		}
+	}
+
+	return cleanup, nil
+}
+
+// handlePlanChanges checks if there are changes and validates target resources
+// Returns false if the program should exit
+func handlePlanChanges(plan *model.Plan) bool {
 	// Check if there are any changes
 	if !plan.HasChanges {
 		fmt.Println("No changes to apply.")
-		os.Exit(0)
+		return false
 	}
 
 	// If a target resource is specified, validate it
@@ -119,21 +163,18 @@ func main() {
 		}
 
 		if err := util.ValidateTargetResource(*targetAddr, emptyResourceMap); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(1)
+			exitWithError(err)
+			return false
 		}
 	}
 
-	// Build the execution graph
-	executionGraph := planParser.BuildExecutionGraph(plan)
+	return true
+}
 
-	// Create an executor
-	executer := executor.NewTerraformExecutor(*terraformPath, *terraformDir, *planFile, *varFile, *dryRun)
+// executeResources executes the planned resources
+func executeResources(ui *ui.UI, executer *executor.TerraformExecutor,
+	executionGraph *model.ExecutionGraph, plan *model.Plan, targetAddr string) []*model.Resource {
 
-	// Display the plan summary
-	ui.DisplayPlanSummary(plan)
-
-	// Execute the plan step by step
 	var executedResources []*model.Resource
 
 	// Iterate through each layer of the execution graph
@@ -143,7 +184,7 @@ func main() {
 		// Process each resource in the layer
 		for _, resource := range layer {
 			// Skip resources that are not targeted, if a target is specified
-			if *targetAddr != "" && resource.Address != *targetAddr {
+			if targetAddr != "" && resource.Address != targetAddr {
 				continue
 			}
 
@@ -152,65 +193,78 @@ func main() {
 			currentIndex := len(executedResources) + 1
 			ui.DisplayResourceInfo(resource, currentIndex, totalResources)
 
-			// Handle the resource
-			for {
-				// Get the user action
-				action, err := ui.GetUserAction()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error getting user action: %s\n", err)
-					continue
-				}
-
-				// If the action is to abort, confirm and exit
-				if action == model.StepAbort {
-					fmt.Print("Are you sure you want to abort? [y/n]: ")
-					var confirm string
-					if _, err := fmt.Scanln(&confirm); err != nil {
-						fmt.Fprintf(os.Stderr, "Error reading confirmation: %s\n", err)
-						continue
-					}
-					if confirm == "y" || confirm == "Y" {
-						ui.DisplaySummary(executedResources)
-						fmt.Println("Execution aborted.")
-						os.Exit(0)
-					}
-					continue
-				}
-
-				// If the action is to show details, display them and continue
-				if action == model.StepDetail {
-					if err := executer.ExecuteStepAction(action, resource); err != nil {
-						fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-					}
-					continue
-				}
-
-				// Execute the action
-				startTime := time.Now()
-				err = executer.ExecuteStepAction(action, resource)
-				elapsed := time.Since(startTime)
-
-				// Display the result
-				ui.DisplayExecutionResult(resource, err == nil, elapsed)
-
-				// If there was an error, ask if the user wants to continue
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-					if !ui.ConfirmContinue() {
-						ui.DisplaySummary(executedResources)
-						fmt.Println("Execution aborted due to errors.")
-						os.Exit(1)
-					}
-				}
-
-				// Add the resource to the executed resources
+			// Process the user's action for this resource
+			if processResourceAction(ui, executer, resource) {
 				executedResources = append(executedResources, resource)
-				break
 			}
 		}
 	}
 
-	// Display the summary
-	ui.DisplaySummary(executedResources)
-	fmt.Println("Execution complete.")
+	return executedResources
+}
+
+// processResourceAction handles user actions for a resource
+// Returns true if the resource was processed and added to executed resources
+func processResourceAction(ui *ui.UI, executer *executor.TerraformExecutor, resource *model.Resource) bool {
+	for {
+		// Get the user action
+		action, err := ui.GetUserAction()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting user action: %s\n", err)
+			continue
+		}
+
+		// Handle abort action
+		if action == model.StepAbort {
+			if confirmAbort() {
+				fmt.Println("Execution aborted.")
+				os.Exit(0)
+			}
+			continue
+		}
+
+		// Handle detail action
+		if action == model.StepDetail {
+			if err := executer.ExecuteStepAction(action, resource); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			}
+			continue
+		}
+
+		// Execute the action
+		startTime := time.Now()
+		err = executer.ExecuteStepAction(action, resource)
+		elapsed := time.Since(startTime)
+
+		// Display the result
+		ui.DisplayExecutionResult(resource, err == nil, elapsed)
+
+		// If there was an error, ask if the user wants to continue
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			if !ui.ConfirmContinue() {
+				fmt.Println("Execution aborted due to errors.")
+				os.Exit(1)
+			}
+		}
+
+		return true
+	}
+}
+
+// confirmAbort asks the user to confirm aborting the execution
+func confirmAbort() bool {
+	fmt.Print("Are you sure you want to abort? [y/n]: ")
+	var confirm string
+	if _, err := fmt.Scanln(&confirm); err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading confirmation: %s\n", err)
+		return false
+	}
+	return confirm == "y" || confirm == "Y"
+}
+
+// exitWithError prints an error message and exits with code 1
+func exitWithError(err error) {
+	fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+	os.Exit(1)
 }

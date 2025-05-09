@@ -196,13 +196,42 @@ func (p *TerraformPlanParser) calculatePlanStats(plan *model.Plan) {
 // resolveDependencies resolves dependencies between resources
 func (p *TerraformPlanParser) resolveDependencies(plan *model.Plan, planData map[string]interface{}) {
 	// Extract configuration data which contains dependency information
-	configResources, ok := planData["configuration"].(map[string]interface{})["root_module"].(map[string]interface{})["resources"].([]interface{})
+	configData, ok := extractConfigResources(planData)
 	if !ok {
 		return
 	}
 
 	// Create a map of resource addresses to their dependencies
+	depMap := buildDependencyMap(configData)
+
+	// Assign dependencies to resources
+	assignDependenciesToResources(plan, depMap)
+}
+
+// extractConfigResources extracts configuration resources from plan data
+func extractConfigResources(planData map[string]interface{}) ([]interface{}, bool) {
+	configMap, ok := planData["configuration"].(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	rootModule, ok := configMap["root_module"].(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	resources, ok := rootModule["resources"].([]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	return resources, true
+}
+
+// buildDependencyMap creates a map from resource addresses to their dependencies
+func buildDependencyMap(configResources []interface{}) map[string][]string {
 	depMap := make(map[string][]string)
+
 	for _, res := range configResources {
 		resMap, ok := res.(map[string]interface{})
 		if !ok {
@@ -210,46 +239,77 @@ func (p *TerraformPlanParser) resolveDependencies(plan *model.Plan, planData map
 		}
 
 		// Get the resource address
-		addrMode := resMap["mode"].(string)
-		addrType := resMap["type"].(string)
-		addrName := resMap["name"].(string)
-		address := fmt.Sprintf("%s.%s", addrType, addrName)
-		if addrMode == "data" {
-			address = fmt.Sprintf("data.%s", address)
-		}
+		address := formatResourceAddress(resMap)
 
-		// Get the dependencies
-		var deps []string
-		if depsData, ok := resMap["depends_on"].([]interface{}); ok {
-			for _, dep := range depsData {
-				if depStr, ok := dep.(string); ok {
-					deps = append(deps, depStr)
-				}
+		// Get explicit dependencies
+		deps := extractExplicitDependencies(resMap)
+
+		// Get implicit dependencies from expressions
+		implicitDeps := extractImplicitDependencies(resMap)
+
+		// Combine all dependencies
+		deps = append(deps, implicitDeps...)
+		depMap[address] = deps
+	}
+
+	return depMap
+}
+
+// formatResourceAddress formats a resource address from its components
+func formatResourceAddress(resMap map[string]interface{}) string {
+	addrMode, _ := resMap["mode"].(string)
+	addrType, _ := resMap["type"].(string)
+	addrName, _ := resMap["name"].(string)
+
+	address := fmt.Sprintf("%s.%s", addrType, addrName)
+	if addrMode == "data" {
+		address = fmt.Sprintf("data.%s", address)
+	}
+
+	return address
+}
+
+// extractExplicitDependencies gets dependencies explicitly declared with depends_on
+func extractExplicitDependencies(resMap map[string]interface{}) []string {
+	var deps []string
+
+	if depsData, ok := resMap["depends_on"].([]interface{}); ok {
+		for _, dep := range depsData {
+			if depStr, ok := dep.(string); ok {
+				deps = append(deps, depStr)
 			}
 		}
+	}
 
-		// Extract any implicit dependencies from expressions
-		if expressions, ok := resMap["expressions"].(map[string]interface{}); ok {
-			for _, expr := range expressions {
-				if exprMap, ok := expr.(map[string]interface{}); ok {
-					if refs, ok := exprMap["references"].([]interface{}); ok {
-						for _, ref := range refs {
-							if refStr, ok := ref.(string); ok {
-								// Only add if it's a resource reference (not a variable)
-								if strings.Contains(refStr, ".") && !strings.HasPrefix(refStr, "var.") {
-									deps = append(deps, refStr)
-								}
+	return deps
+}
+
+// extractImplicitDependencies gets dependencies implied by expressions
+func extractImplicitDependencies(resMap map[string]interface{}) []string {
+	var deps []string
+
+	if expressions, ok := resMap["expressions"].(map[string]interface{}); ok {
+		for _, expr := range expressions {
+			if exprMap, ok := expr.(map[string]interface{}); ok {
+				if refs, ok := exprMap["references"].([]interface{}); ok {
+					for _, ref := range refs {
+						if refStr, ok := ref.(string); ok {
+							// Only add if it's a resource reference (not a variable)
+							if strings.Contains(refStr, ".") && !strings.HasPrefix(refStr, "var.") {
+								deps = append(deps, refStr)
 							}
 						}
 					}
 				}
 			}
 		}
-
-		depMap[address] = deps
 	}
 
-	// Assign dependencies to resources
+	return deps
+}
+
+// assignDependenciesToResources assigns the collected dependencies to resources
+func assignDependenciesToResources(plan *model.Plan, depMap map[string][]string) {
 	for _, resource := range plan.Resources {
 		if deps, ok := depMap[resource.Address]; ok {
 			resource.Dependencies = deps
@@ -264,66 +324,18 @@ func (p *TerraformPlanParser) BuildExecutionGraph(plan *model.Plan) *model.Execu
 	}
 
 	// Copy the resources to avoid modifying the original plan
-	pendingResources := make(map[string]*model.Resource)
-
-	// Copy resources from the plan to pendingResources map
-	for addr := range plan.ResourcesMap {
-		pendingResources[addr] = plan.ResourcesMap[addr]
-	}
+	pendingResources := copyPendingResources(plan)
 
 	// Process resources until none are left
 	for len(pendingResources) > 0 {
-		// Create a new layer for resources that have no pending dependencies
-		currentLayer := []*model.Resource{}
+		// Find resources ready for the current layer
+		currentLayer, readyAddresses := findReadyResources(pendingResources)
 
-		// Find resources with no pending dependencies
-		var readyAddresses []string
-		for addr, resource := range pendingResources {
-			// Check if this resource has any pending dependencies
-			hasPendingDeps := false
-			for _, depAddr := range resource.Dependencies {
-				if _, exists := pendingResources[depAddr]; exists {
-					hasPendingDeps = true
-					break
-				}
-			}
-
-			// If no pending dependencies, add to current layer
-			if !hasPendingDeps {
-				currentLayer = append(currentLayer, resource)
-				readyAddresses = append(readyAddresses, addr)
-			}
-		}
-
-		// If we found no resources but there are still pending ones,
-		// we have a circular dependency
+		// Handle potential circular dependencies
 		if len(readyAddresses) == 0 && len(pendingResources) > 0 {
-			// Break the circular dependency by picking the resource with
-			// the least pending dependencies
-			var bestAddr string
-			minDeps := -1
-
-			for addr, resource := range pendingResources {
-				// Count pending dependencies
-				depCount := 0
-				for _, depAddr := range resource.Dependencies {
-					if _, exists := pendingResources[depAddr]; exists {
-						depCount++
-					}
-				}
-
-				// Update if this resource has fewer dependencies
-				if minDeps == -1 || depCount < minDeps {
-					minDeps = depCount
-					bestAddr = addr
-				}
-			}
-
-			// Add the selected resource to the current layer
-			if bestAddr != "" {
-				currentLayer = append(currentLayer, pendingResources[bestAddr])
-				readyAddresses = append(readyAddresses, bestAddr)
-			}
+			resource, addr := selectResourceToBreakCircularDependency(pendingResources)
+			currentLayer = append(currentLayer, resource)
+			readyAddresses = append(readyAddresses, addr)
 		}
 
 		// Remove processed resources from pending list
@@ -338,4 +350,72 @@ func (p *TerraformPlanParser) BuildExecutionGraph(plan *model.Plan) *model.Execu
 	}
 
 	return graph
+}
+
+// copyPendingResources creates a copy of resources from the plan
+func copyPendingResources(plan *model.Plan) map[string]*model.Resource {
+	pendingResources := make(map[string]*model.Resource)
+
+	for addr := range plan.ResourcesMap {
+		pendingResources[addr] = plan.ResourcesMap[addr]
+	}
+
+	return pendingResources
+}
+
+// findReadyResources finds resources with no pending dependencies
+func findReadyResources(pendingResources map[string]*model.Resource) ([]*model.Resource, []string) {
+	currentLayer := []*model.Resource{}
+	var readyAddresses []string
+
+	for addr, resource := range pendingResources {
+		if !hasAnyPendingDependency(resource, pendingResources) {
+			currentLayer = append(currentLayer, resource)
+			readyAddresses = append(readyAddresses, addr)
+		}
+	}
+
+	return currentLayer, readyAddresses
+}
+
+// hasAnyPendingDependency checks if a resource has any pending dependencies
+func hasAnyPendingDependency(resource *model.Resource, pendingResources map[string]*model.Resource) bool {
+	for _, depAddr := range resource.Dependencies {
+		if _, exists := pendingResources[depAddr]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+// selectResourceToBreakCircularDependency selects a resource to break circular dependencies
+func selectResourceToBreakCircularDependency(pendingResources map[string]*model.Resource) (*model.Resource, string) {
+	var bestAddr string
+	var bestResource *model.Resource
+	minDeps := -1
+
+	for addr, resource := range pendingResources {
+		// Count pending dependencies
+		depCount := countPendingDependencies(resource, pendingResources)
+
+		// Update if this resource has fewer dependencies
+		if minDeps == -1 || depCount < minDeps {
+			minDeps = depCount
+			bestAddr = addr
+			bestResource = resource
+		}
+	}
+
+	return bestResource, bestAddr
+}
+
+// countPendingDependencies counts how many pending dependencies a resource has
+func countPendingDependencies(resource *model.Resource, pendingResources map[string]*model.Resource) int {
+	count := 0
+	for _, depAddr := range resource.Dependencies {
+		if _, exists := pendingResources[depAddr]; exists {
+			count++
+		}
+	}
+	return count
 }
